@@ -16,60 +16,13 @@ static const char *TAG = "WATER_LEVEL_SENSOR";
 #define trigPin 5
 #define echoPin 18
 
-/*void checkWaterDistance(void* pvParameters) {
+void checkWaterDistance(void* pvParameters) {
     while(1) {
-        // Ensure pin is set to LOW before starting
+        // Ensuring trigger is LOW before starting
         gpio_set_level(trigPin, 0);
         esp_rom_delay_us(2);
 
         // Set trigger HIGH for 10 us to start process
-        gpio_set_level(trigPin, 1);
-        esp_rom_delay_us(10);
-        gpio_set_level(trigPin, 0);
-
-        int64_t us_since_start = esp_timer_get_time();
-        int64_t timeout_us = 30000; // 30ms timeout incase echo never goes high or low
-        bool timeout_flag = false;
-
-        // Wait for echo pin to go HIGH
-        while(gpio_get_level(echoPin) == 0) {
-            if (esp_timer_get_time() - us_since_start > timeout_us) {
-                timeout_flag = true;
-                break;
-            }
-        }
-
-        if(!timeout_flag) {
-            int64_t echo_start = esp_timer_get_time();
-
-            // Wait for echo to go LOW
-            while(gpio_get_level(echoPin) == 1) {
-                if (esp_timer_get_time() - echo_start > timeout_us) {
-                    timeout_flag = true;
-                    break;
-                }
-            }
-
-            // Get time echo has been HIGH and convert to distance
-            int64_t echoTime = esp_timer_get_time() - echo_start;
-            int distance_cm = echoTime / 58;
-
-            ESP_LOGI(TAG, "Distance is %d cm", distance_cm);
-
-        } else if (timeout_flag) {
-            ESP_LOGE(TAG, "Sensor timeout: Check wiring.");
-        }
-
-        // Run again after 500ms
-        vTaskDelay(pdMS_TO_TICKS(500));
-    }
-}*/
-
-void checkWaterDistance(void* pvParameters) {
-    while(1) {
-        // Trigger pulse
-        gpio_set_level(trigPin, 0);
-        esp_rom_delay_us(2);
         gpio_set_level(trigPin, 1);
         esp_rom_delay_us(10);
         gpio_set_level(trigPin, 0);
