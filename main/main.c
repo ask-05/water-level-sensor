@@ -8,9 +8,16 @@
 #include "freertos/projdefs.h"
 #include "hal/gpio_types.h"
 #include "esp_rom_sys.h"
+#include "portmacro.h"
 
 // Tag
 static const char *TAG = "WATER_LEVEL_SENSOR";
+
+// Global Queue Handle and definitions
+static QueueHandle_t distance_queue;
+
+#define QUEUE_LENGTH 20
+
 
 // Pin Definitions
 #define trigPin 5
@@ -55,12 +62,8 @@ void checkWaterDistance(void* pvParameters) {
                 int64_t echoTime = esp_timer_get_time() - echo_start;
                 int distance_cm = echoTime / 58;
 
-                // Handle blind zone and max range boundaries safely
-                if (distance_cm >= 20 && distance_cm <= 450) {
-                    ESP_LOGI(TAG, "Distance is %d cm", distance_cm);
-                } else {
-                    ESP_LOGW(TAG, "Distance %d cm out of reliable bounds (20cm - 450cm)", distance_cm);
-                }
+                // Send data to Queue
+                xQueueSend(distance_queue, &distance_cm, pdMS_TO_TICKS(100));
             }
         } 
         
@@ -72,6 +75,16 @@ void checkWaterDistance(void* pvParameters) {
 
         // Run again after 500ms
         vTaskDelay(pdMS_TO_TICKS(500));
+    }
+}
+
+void handleDistance(void* pvParameters) {
+    int distance_cm = 0;
+    while(1) {
+        if (xQueueReceive(distance_queue, &distance_cm, portMAX_DELAY) == pdTRUE) {
+            ESP_LOGI(TAG, "Distance: %dcm", distance_cm);
+        }
+        
     }
 }
 
@@ -97,9 +110,25 @@ void app_main(void)
     };
     gpio_config(&echoConfig);
 
+    // Create Queue
+    distance_queue = xQueueCreate(QUEUE_LENGTH, sizeof(int));
+    if(distance_queue == NULL) {
+        ESP_LOGE(TAG, "Could not create queue!");
+        return;
+    }
+
     xTaskCreate(
         checkWaterDistance,
         "Check Water Level",
+        2048,
+        NULL,
+        5,
+        NULL
+    );
+
+    xTaskCreate(
+        handleDistance,
+        "Handle Distance",
         2048,
         NULL,
         5,
