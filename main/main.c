@@ -35,8 +35,19 @@
 #include "lwip/err.h"
 #include "lwip/sys.h"
 
+#include "esp_http_client.h"
+#include "esp_crt_bundle.h"
+
 // Tag
 static const char *TAG = "WATER_LEVEL_SENSOR";
+
+// AWS API and Key
+#define AWS_API_URL CONFIG_AWS_API_URL
+#define AWS_API_KEY CONFIG_AWS_API_KEY
+
+// Pin Definitions
+#define trigPin 5
+#define echoPin 18
 
 // Global Queue Handle and definitions
 static QueueHandle_t distance_queue;
@@ -178,10 +189,6 @@ void wifi_init_sta(void) {
     }
 }
 
-// Pin Definitions
-#define trigPin 5
-#define echoPin 18
-
 // ISR handler for Echo Pin
 static void IRAM_ATTR echoISRHandler(void* pvParameters) {
     static int64_t start_time = 0;
@@ -223,14 +230,59 @@ void triggerSensorTask(void* pvParameters) {
     }
 }
 
+void send_data_to_aws(int distance_cm) {
+    // JSON Payload
+    char post_data[64];
+    snprintf(post_data, sizeof(post_data), "{\"value\":%d}", distance_cm);
+
+    // Configure the HTTP Client
+    esp_http_client_config_t config = {
+        .url = AWS_API_URL,
+        .crt_bundle_attach = esp_crt_bundle_attach, 
+    };
+    esp_http_client_handle_t client = esp_http_client_init(&config);
+
+    // POST request and Headers
+    esp_http_client_set_method(client, HTTP_METHOD_POST);
+    esp_http_client_set_header(client, "Content-Type", "application/json");
+    esp_http_client_set_header(client, "x-api-key", AWS_API_KEY);
+    
+    // The payload
+    esp_http_client_set_post_field(client, post_data, strlen(post_data));
+
+    ESP_LOGI(TAG, "Sending to AWS: %s", post_data);
+
+    // Performing request. Blocks till server responds
+    esp_err_t err = esp_http_client_perform(client);
+
+    if (err == ESP_OK) {
+        ESP_LOGI(TAG, "HTTP POST Status = %d", esp_http_client_get_status_code(client));
+    } else {
+        ESP_LOGE(TAG, "HTTP POST request failed: %s", esp_err_to_name(err));
+    }
+
+    esp_http_client_cleanup(client);
+}
+
 void handleDistance(void* pvParameters) {
     int distance_cm = 0;
+    int64_t last_aws_send_time = 0;
+    const int64_t AWS_INTERVAL_US = 5000000; // 5 seconds
+
     while(1) {
         if (xQueueReceive(distance_queue, &distance_cm, portMAX_DELAY) == pdTRUE) {
             if (distance_cm > 600 || distance_cm <= 0) {
                 ESP_LOGE(TAG, "Out of range or timeout! Distance: %d cm", distance_cm);
             } else {
                 ESP_LOGI(TAG, "Distance: %dcm", distance_cm);
+
+                int64_t current_time = esp_timer_get_time();
+                EventBits_t bits = xEventGroupGetBits(s_wifi_event_group);
+                
+                if ((current_time - last_aws_send_time > AWS_INTERVAL_US) && (bits & WIFI_CONNECTED_BIT)) {
+                    send_data_to_aws(distance_cm);
+                    last_aws_send_time = esp_timer_get_time();
+                }
             }
         }
         
@@ -298,7 +350,7 @@ void app_main(void)
     xTaskCreate(
         handleDistance,
         "Handle Distance",
-        2048,
+        8192,
         NULL,
         5,
         NULL

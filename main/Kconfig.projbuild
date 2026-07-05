@@ -1,4 +1,4 @@
-menu "Example Configuration"
+menu "WiFi Configuration"
 
     config ESP_WIFI_SSID
         string "WiFi SSID"
@@ -65,5 +65,17 @@ menu "Example Configuration"
         config ESP_WIFI_AUTH_WAPI_PSK
             bool "WAPI PSK"
     endchoice
+
+endmenu
+
+menu "AWS Configuration"
+
+    config AWS_API_URL
+        string "AWS API Gateway URL"
+        default ""
+    
+    config AWS_API_KEY
+        string "AWS API Key"
+        default ""
 
 endmenu
