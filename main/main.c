@@ -23,7 +23,32 @@ static QueueHandle_t distance_queue;
 #define trigPin 5
 #define echoPin 18
 
-void checkWaterDistance(void* pvParameters) {
+// ISR handler for Echo Pin
+static void IRAM_ATTR echoISRHandler(void* pvParameters) {
+    static int64_t start_time = 0;
+    int64_t current_time = esp_timer_get_time();
+    int level = gpio_get_level(echoPin);
+
+    if (level == 1) {
+        // Rising edge
+        start_time = current_time;
+    } else {
+        // Falling edge
+        if (start_time > 0) {
+            int64_t echoTime = current_time - start_time;
+            int distance_cm = echoTime / 58;
+            start_time = 0; // Reset for next reading
+
+            // Send data to Queue using ISR functions
+            BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+            xQueueSendFromISR(distance_queue, &distance_cm, &xHigherPriorityTaskWoken);
+
+            if (xHigherPriorityTaskWoken) portYIELD_FROM_ISR();
+        }
+    }
+}
+
+void triggerSensorTask(void* pvParameters) {
     while(1) {
         // Ensuring trigger is LOW before starting
         gpio_set_level(trigPin, 0);
@@ -34,6 +59,14 @@ void checkWaterDistance(void* pvParameters) {
         esp_rom_delay_us(10);
         gpio_set_level(trigPin, 0);
 
+        // Wait 500ms before triggering again
+        vTaskDelay(pdMS_TO_TICKS(500));
+    }
+}
+
+void checkWaterDistance(void* pvParameters) {
+    while(1) {
+        
         int64_t us_since_start = esp_timer_get_time();
         int64_t timeout_us = 30000; // 30ms timeout (covers ~5 meters max distance)
         bool timeout_flag = false;
@@ -82,7 +115,11 @@ void handleDistance(void* pvParameters) {
     int distance_cm = 0;
     while(1) {
         if (xQueueReceive(distance_queue, &distance_cm, portMAX_DELAY) == pdTRUE) {
-            ESP_LOGI(TAG, "Distance: %dcm", distance_cm);
+            if (distance_cm > 600 || distance_cm <= 0) {
+                ESP_LOGE(TAG, "Out of range or timeout! Distance: %d cm", distance_cm);
+            } else {
+                ESP_LOGI(TAG, "Distance: %dcm", distance_cm);
+            }
         }
         
     }
@@ -106,7 +143,7 @@ void app_main(void)
         .mode = GPIO_MODE_INPUT,
         .pull_up_en = GPIO_PULLUP_DISABLE,
         .pull_down_en = GPIO_PULLDOWN_ENABLE,
-        .intr_type = GPIO_INTR_DISABLE,
+        .intr_type = GPIO_INTR_ANYEDGE,
     };
     gpio_config(&echoConfig);
 
@@ -116,10 +153,13 @@ void app_main(void)
         ESP_LOGE(TAG, "Could not create queue!");
         return;
     }
+    
+    gpio_install_isr_service(0);
+    gpio_isr_handler_add(echoPin, echoISRHandler, NULL);
 
     xTaskCreate(
-        checkWaterDistance,
-        "Check Water Level",
+        triggerSensorTask,
+        "Trigger Task",
         2048,
         NULL,
         5,
