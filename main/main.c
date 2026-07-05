@@ -223,53 +223,6 @@ void triggerSensorTask(void* pvParameters) {
     }
 }
 
-void checkWaterDistance(void* pvParameters) {
-    while(1) {
-        
-        int64_t us_since_start = esp_timer_get_time();
-        int64_t timeout_us = 30000; // 30ms timeout (covers ~5 meters max distance)
-        bool timeout_flag = false;
-
-        // Wait for echo pin to go HIGH
-        while(gpio_get_level(echoPin) == 0) {
-            if (esp_timer_get_time() - us_since_start > timeout_us) {
-                timeout_flag = true;
-                break;
-            }
-        }
-
-        if(!timeout_flag) {
-            int64_t echo_start = esp_timer_get_time();
-
-            // Wait for echo to go LOW
-            while(gpio_get_level(echoPin) == 1) {
-                if (esp_timer_get_time() - echo_start > timeout_us) {
-                    timeout_flag = true;
-                    break;
-                }
-            }
-
-            if(!timeout_flag) {
-                // Calculate distance
-                int64_t echoTime = esp_timer_get_time() - echo_start;
-                int distance_cm = echoTime / 58;
-
-                // Send data to Queue
-                xQueueSend(distance_queue, &distance_cm, pdMS_TO_TICKS(100));
-            }
-        } 
-        
-        if (timeout_flag) {
-            ESP_LOGE(TAG, "Sensor timeout: No object detected or check wiring.");
-            // Give the system a brief moment to recover before the main delay
-            vTaskDelay(pdMS_TO_TICKS(10)); 
-        }
-
-        // Run again after 500ms
-        vTaskDelay(pdMS_TO_TICKS(500));
-    }
-}
-
 void handleDistance(void* pvParameters) {
     int distance_cm = 0;
     while(1) {
