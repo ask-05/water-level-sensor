@@ -19,8 +19,8 @@ The AJ-SR04M outputs a 5V signal on the Echo pin, which can damage the 3.3V logi
 1. **Prerequisites:** Ensure you have the ESP-IDF framework installed and set up.
 2. **Clone the Repository:**
    ```bash
-   git clone <your-repo-link>
-   cd <your-repo-folder>
+   git clone https://github.com/ask-05/water-level-sensor.git
+   cd water-level-sensor
    ```
 3. **Set up menuconfig:**  On menuconfig, set your WiFi SSID and Password along with other security features in WiFi Configuration. Also set your AWS Gateway URL and API Key in AWS Configuration.
 4. **Build, Flash, and monitor:** Your project should be up and running!
